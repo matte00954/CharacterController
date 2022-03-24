@@ -7,6 +7,7 @@ public class PlayerMovement : MonoBehaviour
     private BoxCollider2D playerCollider;
 
     [SerializeField] private Vector3 direction;
+    [SerializeField] private Vector3 velocity;
     [SerializeField] private LayerMask collisionMask;
 
     [SerializeField] private float movementSpeed = 2f;
@@ -15,6 +16,8 @@ public class PlayerMovement : MonoBehaviour
 
     [Tooltip("Ground check distance is collider margin variable multiplied by this variable")]
     [SerializeField] [Range(1.25f, 5f)] private float groundCheckDistanceMultiplier = 2f;
+
+    //private RaycastHit2D boxCast;
 
     private float groundCheckDistance = -1f;
 
@@ -39,14 +42,16 @@ public class PlayerMovement : MonoBehaviour
 
         Vector3 movement = direction * distance;
 
-        movement -= Collision(movement);
-
+        movement += Collision(movement);
+        
         movement += Gravity();
 
         if (Input.GetKeyDown(KeyCode.Space) && grounded)
         {
             movement += Jump();
         }
+
+        velocity = movement;
 
         transform.position += movement;
     }
@@ -91,17 +96,32 @@ public class PlayerMovement : MonoBehaviour
 
         Vector3 result = Vector3.zero;
 
-        if (boxCast)
+        if (movement.magnitude < 0.001f)
         {
-            //return Projection(movement, boxCast.normal);
+            return result;
+        }
+        else if (boxCast)
+        {
+            Debug.Log("asdasdasdasd");
+            //Vector3 movement = movement * (boxCast.distance - colliderMargin);
+            Vector3 normalForce = Projection(movement, boxCast.normal);
+            result = movement + normalForce; // Velocity + (-Projection) = NormalForce(new velocity)
+            return Collision(result);
+        }
+        else
+        {
+            return result;
+        }
+
+        /*if (boxCast)
+        {
             result = movement;
         }
         else
         {
-            //return movement * (boxCast.distance - colliderMargin);
             result = movement * (boxCast.distance - colliderMargin);
         }
-        result -= Projection(movement, boxCast.normal); // Velocity + (-Projection) = NormalForce(new velocity)
-        return result;
+
+        result -= Projection(movement, boxCast.normal); // Velocity + (-Projection) = NormalForce(new velocity)*/
     }
 }
