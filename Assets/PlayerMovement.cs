@@ -51,37 +51,33 @@ public class PlayerMovement : MonoBehaviour
 
         Vector3 velocity = direction * movementSpeed * Time.deltaTime;
 
-        collisionBoxCastHit = Physics2D.BoxCast(transform.position, playerCollider.size, 0.0f, velocity.normalized, velocity.magnitude, collisionMask);
+        velocity = CollisionDetection(velocity);
 
-        if (velocity.magnitude < 0.001f)
-        {
-            //nothing happens
-        }
-        else if (collisionBoxCastHit)
-        {
-            velocity += (Vector3)NormalForceProjection(velocity, collisionBoxCastHit.normal);
-        }
-        
         transform.position += velocity;
 
         //
         inspectorVelocity = velocity; //debugging
         //
+
     }
 
-    private Vector3 Collision(Vector3 movement)
+    private Vector3 CollisionDetection(Vector3 velocity)
     {
+        collisionBoxCastHit = Physics2D.BoxCast(transform.position, playerCollider.size, 0.0f, velocity.normalized, velocity.magnitude, collisionMask);
 
-        if (movement.magnitude < 0.01f)
+        if (velocity.magnitude < 0.001f)
         {
+            return velocity;
         }
-        else if (true)
+        else if (collisionBoxCastHit)
         {
+            //return CollisionDetection(velocity + (Vector3)NormalForceProjection(velocity, collisionBoxCastHit.normal)); //Rekursiv lösning, verkar inte göra något annorlunda???
+            return velocity + (Vector3)NormalForceProjection(velocity, collisionBoxCastHit.normal);
         }
         else
         {
+            return velocity;
         }
-        return movement;
     }
 
     private Vector2 NormalForceProjection(Vector2 velocity, Vector2 normal)
