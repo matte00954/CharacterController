@@ -12,6 +12,8 @@ public class PlayerMovement : MonoBehaviour
 
     [SerializeField] private float movementSpeed = 2f;
 
+    [SerializeField] private float terminalVelocity = 5f;
+
     [SerializeField] private float jumpHeight = 20f;
 
     private float horizontalInput;
@@ -49,9 +51,9 @@ public class PlayerMovement : MonoBehaviour
 
         Vector3 direction = new Vector3(horizontalInput, gravityValue, 0).normalized;
 
-        Vector3 velocity = direction * movementSpeed * Time.deltaTime;
+        //Vector3 velocity = direction * movementSpeed * Time.deltaTime;
 
-        velocity = CollisionDetection(velocity);
+        Vector3 velocity = CollisionDetection(direction * movementSpeed * Time.deltaTime);
 
         transform.position += velocity;
 
@@ -64,14 +66,11 @@ public class PlayerMovement : MonoBehaviour
     private Vector3 CollisionDetection(Vector3 velocity)
     {
         collisionBoxCastHit = Physics2D.BoxCast(transform.position, playerCollider.size, 0.0f, velocity.normalized, velocity.magnitude, collisionMask);
+        float distanceToCollider = colliderMargin / Vector2.Dot(velocity.normalized, collisionBoxCastHit.normal);
+        float allowedMovementDistance = collisionBoxCastHit.distance + distanceToCollider;
 
-        if (velocity.magnitude < 0.001f)
+        if (allowedMovementDistance < velocity.magnitude)
         {
-            return velocity;
-        }
-        else if (collisionBoxCastHit)
-        {
-            //return CollisionDetection(velocity + (Vector3)NormalForceProjection(velocity, collisionBoxCastHit.normal)); //Rekursiv lösning, verkar inte göra något annorlunda???
             return velocity + (Vector3)NormalForceProjection(velocity, collisionBoxCastHit.normal);
         }
         else
@@ -92,7 +91,6 @@ public class PlayerMovement : MonoBehaviour
             return -projection;
         }
     }
-
 }
 
 /*
