@@ -4,27 +4,43 @@ using UnityEngine;
 
 public class PlayerMovement : MonoBehaviour
 {
-    private BoxCollider2D playerCollider;
-    
+
+    [Header("Debug variables")]
     [SerializeField] private Vector3 inspectorVelocity; //debug
 
+    [Header("Movement variables")]
+    private float movementSpeed = 4f;
+    private float terminalVelocity = 10f;
+
+    private float decelerationMultiplier = 2f;
+
+    //Colliders
+    [Header("Collision variables")]
     [SerializeField] private LayerMask collisionMask;
-
-    [SerializeField] private float movementSpeed = 2f;
-
-    [SerializeField] private float terminalVelocity = 5f;
-
-    [SerializeField] private float jumpHeight = 20f;
-
-    private float horizontalInput;
+    private BoxCollider2D playerCollider;
 
     private float colliderMargin = 0.005f;
-
     private float groundCheckDistance = 0.0125f; //Longer than colliderMargin
 
     private RaycastHit2D groundedBoxCastHit;
-
     private RaycastHit2D collisionBoxCastHit;
+
+    //Jumping
+    private bool isJumping;
+    private bool cancelJump;
+
+    private float jumpSpeed = 15f;
+
+    private float jumpTimer = 0f;
+
+    private const float JUMP_MIN_TIMER = 0.03f;
+    private const float JUMP_MAX_TIMER = 0.08f;
+
+    //Gravity
+    private float gravityValue = 10f;
+
+    //Other
+    private bool checkCollisionNextFrame;
 
     private void Awake()
     {
@@ -33,34 +49,135 @@ public class PlayerMovement : MonoBehaviour
 
     private void Update()
     {
-        horizontalInput = Input.GetAxisRaw("Horizontal");
+        Vector2 input = Vector2.right * Input.GetAxisRaw("Horizontal");
+
+        Vector3 velocity = Vector3.zero;
 
         groundedBoxCastHit = Physics2D.BoxCast(transform.position, playerCollider.size, 0.0f, Vector2.down, groundCheckDistance, collisionMask);
 
-        float gravityValue = 0;
-
-        if (groundedBoxCastHit == false) //Gravity
+        if (input.magnitude > float.Epsilon)
         {
-            gravityValue = -1f;
+            velocity = Accelerate(input);
+        }
+        else
+        {
+            velocity = Decelerate(velocity);
         }
 
-        if (groundedBoxCastHit == true && Input.GetKeyDown(KeyCode.Space)) //Jump
+        velocity += Gravity(velocity);
+
+        JumpInput();
+
+        if (isJumping == true)
         {
-            transform.position = new Vector3(transform.position.x, transform.position.y + jumpHeight, transform.position.z);
+            velocity += Jump();
         }
 
-        Vector3 direction = new Vector3(horizontalInput, gravityValue, 0).normalized;
-
-        //Vector3 velocity = direction * movementSpeed * Time.deltaTime;
-
-        Vector3 velocity = CollisionDetection(direction * movementSpeed * Time.deltaTime);
+        velocity = CollisionDetection(velocity);
 
         transform.position += velocity;
 
-        //
+        //Ignore
         inspectorVelocity = velocity; //debugging
-        //
+    }
 
+    private Vector3 Gravity(Vector3 velocity)
+    {
+        Vector3 gravity = Vector3.zero;
+
+        if (groundedBoxCastHit == false) //Gravity
+        {
+            gravity = new Vector3(0, -gravityValue * Time.deltaTime, 0);
+            velocity += gravity;
+        }
+
+        return velocity;
+    }
+
+    private void JumpInput() //Only checks jump input
+    {
+        if (groundedBoxCastHit && Input.GetKeyDown(KeyCode.Space) && isJumping == false) //Jump
+        {
+            isJumping = true;
+            cancelJump = false;
+        }
+        else if (Input.GetKeyUp(KeyCode.Space))
+        {
+            cancelJump = true;
+        }
+    }
+
+    private Vector3 Jump() //Changes velocity based on jump input
+    {
+        jumpTimer += Time.deltaTime;
+
+        if (cancelJump)
+        {
+            if (jumpTimer > JUMP_MIN_TIMER)
+            {
+                //Canceled jump
+                jumpTimer = 0;
+                isJumping = false;
+                cancelJump = false;
+                return Vector3.zero;
+            }
+        }
+        else if (jumpTimer > JUMP_MAX_TIMER)
+        {
+            //Full jump
+            jumpTimer = 0;
+            isJumping = false;
+            return Vector3.zero;
+        }
+
+        Vector3 value = Accelerate(Vector3.up * jumpSpeed);
+        return value;
+    }
+
+    private Vector2 Accelerate(Vector2 input)
+    {
+
+        Vector2 velocity = Vector2.zero;
+
+        velocity += input * movementSpeed * Time.deltaTime;
+
+        if (velocity.magnitude > terminalVelocity)
+        {
+            velocity = velocity.normalized * terminalVelocity;
+        }
+
+        return velocity;
+    }
+
+    private Vector3 Accelerate(Vector3 input)
+    {
+
+        Vector3 velocity = Vector3.zero;
+
+        velocity += input * movementSpeed * Time.deltaTime;
+
+        if (velocity.magnitude > terminalVelocity)
+        {
+            velocity = velocity.normalized * terminalVelocity;
+        }
+
+        return velocity;
+    }
+
+    private Vector2 Decelerate(Vector3 velocity)
+    {
+        Vector3 projection = new Vector3(velocity.x, 0.0f, velocity.z).normalized;
+
+        Vector3 deceleration = velocity;
+
+        deceleration -= projection * decelerationMultiplier * Time.deltaTime;
+
+        if (deceleration.x > velocity.x)
+        {
+            return velocity;
+        }
+
+        return deceleration;
     }
 
     private Vector3 CollisionDetection(Vector3 velocity)
@@ -69,9 +186,28 @@ public class PlayerMovement : MonoBehaviour
         float distanceToCollider = colliderMargin / Vector2.Dot(velocity.normalized, collisionBoxCastHit.normal);
         float allowedMovementDistance = collisionBoxCastHit.distance + distanceToCollider;
 
+        if (checkCollisionNextFrame == true)
+        {
+            Vector3 normal = (Vector3)NormalForceProjection(velocity, collisionBoxCastHit.normal);
+
+            if (collisionBoxCastHit)
+            {
+                checkCollisionNextFrame = false;
+            }
+
+            return velocity + normal;
+        }
+
+        if (velocity.magnitude < 0.0001f)
+        {
+            return velocity;
+        }
+
         if (allowedMovementDistance < velocity.magnitude)
         {
-            return velocity + (Vector3)NormalForceProjection(velocity, collisionBoxCastHit.normal);
+            checkCollisionNextFrame = true;
+            Vector3 normal = (Vector3)NormalForceProjection(velocity, collisionBoxCastHit.normal);
+            return velocity + normal;
         }
         else
         {

@@ -223,8 +223,6 @@ MonoBehaviour:
   collisionMask:
     serializedVersion: 2
     m_Bits: 64
-  movementSpeed: 5
-  jumpHeight: 3
 --- !u!61 &354595730
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -437,7 +435,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 694132874}
   m_LocalRotation: {x: 0, y: 0, z: 0.7071068, w: 0.7071068}
-  m_LocalPosition: {x: 2.06, y: -3.82, z: 0}
+  m_LocalPosition: {x: 2.06, y: -2.35, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
@@ -764,7 +762,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1682435656}
   m_LocalRotation: {x: 0, y: 0, z: 0.7071068, w: 0.7071068}
-  m_LocalPosition: {x: 5, y: -2.9, z: 0}
+  m_LocalPosition: {x: 5, y: -1.98, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
