@@ -17,8 +17,8 @@ public class PlayerMovement3D : MonoBehaviour
     [Header("Collision variables")]
     [SerializeField] private LayerMask collisionMask;
     private CapsuleCollider playerCollider;
-    private Vector3 capsulePointOne;
-    private Vector3 capsulePointTwo;
+    private Vector3 upperCapsulePoint;
+    private Vector3 lowerCapsulePoint;
 
     [SerializeField] private float castRange = 1f;
 
@@ -46,7 +46,7 @@ public class PlayerMovement3D : MonoBehaviour
     private const float JUMP_MAX_TIMER = 0.1f;
 
     //Gravity
-    private float gravityValue = -5f;
+    private float gravityValue = -11f;
 
     //Other
     private int collisionCounter;
@@ -60,20 +60,21 @@ public class PlayerMovement3D : MonoBehaviour
     {
         velocity = Vector3.zero;
 
+        Vector3 input = Vector3.zero;
+
         horizontal = Input.GetAxisRaw("Horizontal");
+
         vertical = Input.GetAxisRaw("Vertical");
 
-        //playerCamera.transform.eulerAngles += new Vector3(0, rotationY, 0) * Time.deltaTime;
+        input += transform.right * horizontal;
 
-        //Vector3 input = Vector3.right * horizontal + Vector3.forward * vertical; //FEL!!!
+        input += transform.forward * vertical; 
 
-        Vector3 input = transform.right * horizontal + transform.forward * vertical; 
+        upperCapsulePoint = playerCollider.center + transform.up * (playerCollider.height / 2 - playerCollider.radius); //verkar vara ok efter test
 
-        capsulePointOne = playerCollider.center + transform.up * (playerCollider.height / 2 - playerCollider.radius);
+        lowerCapsulePoint = playerCollider.center + -transform.up * (playerCollider.height / 2 - playerCollider.radius); //verkar vara ok efter test
 
-        capsulePointTwo = playerCollider.center + -transform.up * (playerCollider.height / 2 - playerCollider.radius);
-
-        grounded = Physics.CapsuleCast(capsulePointOne, capsulePointTwo, playerCollider.radius, -transform.up, castRange, collisionMask);
+        //grounded = Physics.BoxCast(transform.position,transform.lossyScale / 2, -transform.up, transform.rotation, playerCollider.height, collisionMask);//verkar vara ok efter test
 
         if (input.magnitude > float.Epsilon)
         {
@@ -84,7 +85,7 @@ public class PlayerMovement3D : MonoBehaviour
             velocity = Decelerate();
         }
 
-        velocity += Gravity();
+        Gravity();
 
         JumpInput();
 
@@ -97,20 +98,22 @@ public class PlayerMovement3D : MonoBehaviour
 
         velocity *= Mathf.Pow(airResistance, Time.deltaTime);
 
-        velocity = CollisionDetection(velocity);
+        transform.position += CollisionDetection(velocity);
 
-        transform.localPosition += velocity;
+        /*
+        if(velocity != Vector3.zero)
+            Debug.Log(velocity);
 
         //Ignore
         inspectorVelocity = velocity; //debugging
+        */
     }
 
-    private Vector3 Gravity()
+    private void Gravity()
     {
-        Vector3 gravity = Vector3.zero;
-        gravity = new Vector3(0, gravityValue * Time.deltaTime, 0);
+        Vector3 gravity = new Vector3(0, gravityValue * Time.deltaTime, 0);
         gravity = CollisionDetection(gravity);
-        return gravity;
+        transform.localPosition += gravity;
     }
 
     private void JumpInput() //Only checks jump input
@@ -183,19 +186,49 @@ public class PlayerMovement3D : MonoBehaviour
         return deceleration;
     }
 
-    private Vector3 CollisionDetection(Vector3 velocityParameter) //Parameter needed for recursion 
+    private Vector3 CollisionDetection(Vector3 collisionVelocity) //Parameter needed for recursion 
     {
+        /*
+        Vector3 calculation = collisionVelocity;
 
-        Vector3 collisionVelocity = velocityParameter;
+        RaycastHit hit;
 
-        //RaycastHit hit;
+        Physics.CapsuleCast(upperCapsulePoint, lowerCapsulePoint, playerCollider.radius - colliderMargin, calculation.normalized, out hit, castRange, collisionMask);
 
-        //Physics.CapsuleCast(capsulePointOne, capsulePointTwo, playerCollider.radius - Physics.defaultContactOffset, collisionVelocity.normalized, out hit, castRange, collisionMask);
+        float distanceToCollider = colliderMargin / Vector3.Dot(calculation.normalized, hit.normal);
 
-        Collider[] colliders = Physics.OverlapCapsule(capsulePointOne, capsulePointTwo, playerCollider.radius - colliderMargin, collisionMask);
+        float allowedMovementDistance = hit.distance + distanceToCollider;
 
-        if (colliders.Length > 1)
+        if (calculation.magnitude < 0.0001f)
         {
+            return Vector3.zero;
+        }
+
+        if (allowedMovementDistance < calculation.magnitude && collisionCounter <= 50)
+        {
+            collisionCounter++;
+            Vector3 normal = (Vector3)NormalForceProjection(calculation, hit.normal);
+            return CollisionDetection(calculation + normal);
+        }
+        else
+        {
+            collisionCounter = 0;
+            return calculation;
+        }
+
+        */
+
+        //Lösningen under fungerar inte
+
+        Collider[] colliders;
+
+        colliders = Physics.OverlapCapsule(upperCapsulePoint, lowerCapsulePoint, playerCollider.radius - colliderMargin, collisionMask);
+
+        Debug.Log(colliders.Length);
+
+        if (colliders.Length >= 1) //Är detta felet?
+        {
+
             Vector3 separationVector = Vector3.zero;
             float distance = 0f;
 
@@ -214,7 +247,8 @@ public class PlayerMovement3D : MonoBehaviour
         {
             RaycastHit hit;
 
-            //Physics.CapsuleCast(capsulePointOne, capsulePointTwo, playerCollider.radius - colliderMargin, collisionVelocity.normalized, out hit, castRange, collisionMask);
+            //Physics.CapsuleCast(capsulePointOne, capsulePointTwo, playerCollider.radius - Physics.defaultContactOffset, collisionVelocity.normalized, out hit, castRange, collisionMask);
+            Physics.CapsuleCast(upperCapsulePoint, lowerCapsulePoint, playerCollider.radius - colliderMargin, collisionVelocity.normalized, out hit, castRange, collisionMask);
 
             Physics.BoxCast(transform.position, transform.position, collisionVelocity, out hit, Quaternion.identity, castRange, collisionMask);
 
@@ -227,11 +261,10 @@ public class PlayerMovement3D : MonoBehaviour
                 return Vector3.zero;
             }
 
-            if (allowedMovementDistance < collisionVelocity.magnitude && collisionCounter <= 10)
+            if (allowedMovementDistance < collisionVelocity.magnitude && collisionCounter <= 50)
             {
                 collisionCounter++;
                 Vector3 normal = (Vector3)NormalForceProjection(collisionVelocity, hit.normal);
-                Debug.Log("asdasdasdasd");
                 return CollisionDetection(collisionVelocity + normal);
             }
             else
@@ -239,6 +272,7 @@ public class PlayerMovement3D : MonoBehaviour
                 collisionCounter = 0;
                 return collisionVelocity;
             }
+        
         }
     }
 
@@ -246,7 +280,7 @@ public class PlayerMovement3D : MonoBehaviour
     {
         Vector3 friction = Vector3.zero;
         RaycastHit hit;
-        Physics.CapsuleCast(capsulePointOne, capsulePointTwo, playerCollider.radius - Physics.defaultContactOffset, velocity.normalized, out hit, castRange, collisionMask);
+        Physics.CapsuleCast(upperCapsulePoint, lowerCapsulePoint, playerCollider.radius - Physics.defaultContactOffset, velocity.normalized, out hit, castRange, collisionMask);
         //Physics.BoxCast(transform.position, playerCollider.size, Vector3.down, out hit, Quaternion.identity, velocity.magnitude, collisionMask);
         Vector3 normalForce = NormalForceProjection(velocity, hit.normal);
 
