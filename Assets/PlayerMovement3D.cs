@@ -1,55 +1,51 @@
 using UnityEngine;
+using UnityEngine.Assertions;
 
 public class PlayerMovement3D : MonoBehaviour
 {
-    private Vector3 velocity;
+    [Header("Classes")]
+    [SerializeField] private CameraController controller;
 
     [Header("Debug variables")]
-    [SerializeField] private Vector3 inspectorVelocity; //debug
+    public Vector3 velocity;
+    public bool grounded = false;
 
     [Header("Movement variables")]
-    private float movementSpeed = 6f;
-    private float terminalVelocity = 14f;
+    [Range(2f, 25.0f)] [SerializeField] private float movementSpeed = 6f;
+    [Range(0.0f, 1.0f)] [SerializeField] private float jumpSpeed = 10f;
+    [Range(0.0f, 1.0f)] [SerializeField] private float staticFrictionCoefficient = 0.35f;
+    [Range(0.0f, 1.0f)] [SerializeField] private float kineticFrictionCoefficient = 0.35f;
+    [Range(0.0f, 1.0f)] [SerializeField] private float airResistance = 0.5f;
+    [Range(0.0f, 1.0f)] [SerializeField] private float castRange = 1f;
+    [Range(0.0f, 1.0f)] [SerializeField] private float slopeAngleFactor;
 
-    private float decelerationMultiplier = 2f;
-
-    //Colliders
-    [Header("Collision variables")]
-    [SerializeField] private LayerMask collisionMask;
     private CapsuleCollider playerCollider;
-    private Vector3 upperCapsulePoint;
-    private Vector3 lowerCapsulePoint;
 
-    [SerializeField] private float castRange = 1f;
-
-    private float colliderMargin = 0.015f;
-    //private float groundCheckDistance = 0.0125f; //Longer than colliderMargin
-
-    private float staticFrictionCoefficient = 0.35f;
-    private float kineticFrictionCoefficient = 0.35f;
-    private float airResistance = 0.5f;
-
-    private float vertical;
-    private float horizontal;
-
-    [SerializeField] private bool grounded;
+    private float jumpTimer;
 
     //Jumping
     private bool isJumping;
     private bool cancelJump;
 
-    private float jumpSpeed = 10f;
-
-    private float jumpTimer = 0f;
-
     private const float JUMP_MIN_TIMER = 0.02f;
     private const float JUMP_MAX_TIMER = 0.1f;
 
     //Gravity
-    private float gravityValue = -11f;
+    [SerializeField] [Range(5f, 25f)] private float gravityForce = 15f;
 
-    //Other
-    private int collisionCounter;
+    //Colliders
+    [Header("Collision variables")]
+    [SerializeField] private LayerMask collisionMask;
+    private Vector3 upperLocalCapsulePoint => playerCollider.center + transform.up * (playerCollider.height * 0.5f - playerCollider.radius);
+    private Vector3 lowerLocalCapsulePoint => playerCollider.center - transform.up * (playerCollider.height * 0.5f - playerCollider.radius);
+    private Vector3 upperWorldCapsulePoint => transform.position + upperLocalCapsulePoint;
+    private Vector3 lowerWorldCapsulePoint => transform.position + lowerLocalCapsulePoint;
+    private float colliderMargin = 0.015f;
+    private const int MAX_COLLISION_DETECTIONS = 30;
+
+    //Inputs
+    private float vertical;
+    private float horizontal;
 
     private void Awake()
     {
@@ -58,62 +54,46 @@ public class PlayerMovement3D : MonoBehaviour
 
     private void Update()
     {
-        velocity = Vector3.zero;
+        RaycastHit groundHit;
 
-        Vector3 input = Vector3.zero;
+        grounded = Physics.CapsuleCast(upperWorldCapsulePoint, lowerWorldCapsulePoint,
+            playerCollider.radius, Vector3.down, out groundHit, castRange + colliderMargin, collisionMask);
 
         horizontal = Input.GetAxisRaw("Horizontal");
 
         vertical = Input.GetAxisRaw("Vertical");
 
-        input += transform.right * horizontal;
+        Vector3 input = Vector3.right * horizontal + Vector3.forward * vertical;
 
-        input += transform.forward * vertical; 
+        float inputMagnitude = input.magnitude;
 
-        upperCapsulePoint = playerCollider.center + transform.up * (playerCollider.height / 2 - playerCollider.radius); //verkar vara ok efter test
+        if (inputMagnitude > 1.0f)
+            input.Normalize();
 
-        lowerCapsulePoint = playerCollider.center + -transform.up * (playerCollider.height / 2 - playerCollider.radius); //verkar vara ok efter test
+        Vector3 normal = grounded ? groundHit.normal : Vector3.up;
 
-        //grounded = Physics.BoxCast(transform.position,transform.lossyScale / 2, -transform.up, transform.rotation, playerCollider.height, collisionMask);//verkar vara ok efter test
+        input = Vector3.ProjectOnPlane(controller.transform.rotation * input,
+            Vector3.Lerp(Vector3.up, normal, slopeAngleFactor).normalized * inputMagnitude);
 
-        if (input.magnitude > float.Epsilon)
-        {
-            velocity = Accelerate(input);
-        }
-        else
-        {
-            velocity = Decelerate();
-        }
+        velocity += input * movementSpeed * Time.deltaTime;
+        velocity += Vector3.down * gravityForce * Time.deltaTime;
 
-        Gravity();
+        NormalForceProjection(velocity, groundHit.normal);
 
+        #region Jump
         JumpInput();
 
         if (isJumping == true)
         {
             velocity += Jump();
         }
-
-        velocity += Friction();
+        #endregion
 
         velocity *= Mathf.Pow(airResistance, Time.deltaTime);
 
-        transform.position += CollisionDetection(velocity);
+        CollisionDetection();
 
-        /*
-        if(velocity != Vector3.zero)
-            Debug.Log(velocity);
-
-        //Ignore
-        inspectorVelocity = velocity; //debugging
-        */
-    }
-
-    private void Gravity()
-    {
-        Vector3 gravity = new Vector3(0, gravityValue * Time.deltaTime, 0);
-        gravity = CollisionDetection(gravity);
-        transform.localPosition += gravity;
+        Movement(velocity * Time.deltaTime);
     }
 
     private void JumpInput() //Only checks jump input
@@ -129,7 +109,7 @@ public class PlayerMovement3D : MonoBehaviour
         }
     }
 
-    private Vector3 Jump() //Changes velocity based on jump input
+    private Vector3 Jump() //Allows for different jump heights depending on input
     {
         jumpTimer += Time.deltaTime;
 
@@ -152,158 +132,116 @@ public class PlayerMovement3D : MonoBehaviour
             return Vector3.zero;
         }
 
-        Vector3 value = Accelerate(Vector3.up * jumpSpeed);
+        Vector3 value = Vector3.up * jumpSpeed;
         return value;
     }
 
-    private Vector3 Accelerate(Vector3 input)
+    private void CollisionDetection() 
     {
-        Vector3 accelerate = Vector3.zero;
-
-        accelerate += input * movementSpeed * Time.deltaTime;
-
-        if (accelerate.magnitude > terminalVelocity)
-        {
-            accelerate = accelerate.normalized * terminalVelocity;
-        }
-
-        return accelerate;
-    }
-
-    private Vector3 Decelerate()
-    {
-        Vector3 projection = new Vector3(velocity.x, 0.0f, velocity.z).normalized;
-
-        Vector3 deceleration = velocity;
-
-        deceleration -= projection * decelerationMultiplier * Time.deltaTime;
-
-        if (deceleration.x > velocity.x)
-        {
-            return velocity;
-        }
-
-        return deceleration;
-    }
-
-    private Vector3 CollisionDetection(Vector3 collisionVelocity) //Parameter needed for recursion 
-    {
-        /*
-        Vector3 calculation = collisionVelocity;
-
-        RaycastHit hit;
-
-        Physics.CapsuleCast(upperCapsulePoint, lowerCapsulePoint, playerCollider.radius - colliderMargin, calculation.normalized, out hit, castRange, collisionMask);
-
-        float distanceToCollider = colliderMargin / Vector3.Dot(calculation.normalized, hit.normal);
-
-        float allowedMovementDistance = hit.distance + distanceToCollider;
-
-        if (calculation.magnitude < 0.0001f)
-        {
-            return Vector3.zero;
-        }
-
-        if (allowedMovementDistance < calculation.magnitude && collisionCounter <= 50)
-        {
-            collisionCounter++;
-            Vector3 normal = (Vector3)NormalForceProjection(calculation, hit.normal);
-            return CollisionDetection(calculation + normal);
-        }
-        else
-        {
-            collisionCounter = 0;
-            return calculation;
-        }
-
-        */
-
-        //Lösningen under fungerar inte
-
-        Collider[] colliders;
-
-        colliders = Physics.OverlapCapsule(upperCapsulePoint, lowerCapsulePoint, playerCollider.radius - colliderMargin, collisionMask);
-
-        Debug.Log(colliders.Length);
-
-        if (colliders.Length >= 1) //Är detta felet?
-        {
-
-            Vector3 separationVector = Vector3.zero;
-            float distance = 0f;
-
-            foreach (Collider item in colliders)
-            {
-                if(Physics.ComputePenetration(playerCollider, transform.position, transform.rotation,
-                    item, item.transform.position, item.transform.rotation, out separationVector, out distance))
-                {                
-                    //transform.position += NormalForceProjection(collisionVelocity, separationVector.normalized);
-                    return NormalForceProjection(collisionVelocity, separationVector.normalized);
-                }
-            }
-            return collisionVelocity;
-        }
-        else
+        
+        for (int count = 0; count < MAX_COLLISION_DETECTIONS && velocity.magnitude > 0.001f; count++)
         {
             RaycastHit hit;
-
-            //Physics.CapsuleCast(capsulePointOne, capsulePointTwo, playerCollider.radius - Physics.defaultContactOffset, collisionVelocity.normalized, out hit, castRange, collisionMask);
-            Physics.CapsuleCast(upperCapsulePoint, lowerCapsulePoint, playerCollider.radius - colliderMargin, collisionVelocity.normalized, out hit, castRange, collisionMask);
-
-            Physics.BoxCast(transform.position, transform.position, collisionVelocity, out hit, Quaternion.identity, castRange, collisionMask);
-
-            float distanceToCollider = colliderMargin / Vector3.Dot(collisionVelocity.normalized, hit.normal);
-
-            float allowedMovementDistance = hit.distance + distanceToCollider;
-
-            if (collisionVelocity.magnitude < 0.0001f)
+            if(Physics.CapsuleCast(upperWorldCapsulePoint, lowerWorldCapsulePoint, playerCollider.radius, velocity.normalized, out hit, float.MaxValue, collisionMask))
             {
-                return Vector3.zero;
-            }
+                float distanceToCollider = colliderMargin / Vector3.Dot(velocity.normalized, hit.normal);
+                float allowedMoveDistance = hit.distance + distanceToCollider;
 
-            if (allowedMovementDistance < collisionVelocity.magnitude && collisionCounter <= 50)
-            {
-                collisionCounter++;
-                Vector3 normal = (Vector3)NormalForceProjection(collisionVelocity, hit.normal);
-                return CollisionDetection(collisionVelocity + normal);
+                if(allowedMoveDistance > velocity.magnitude * Time.deltaTime)
+                {
+                    return;
+                }
+
+                if (allowedMoveDistance > 0)
+                {
+                    transform.position += velocity.normalized * allowedMoveDistance;
+                }
+
+                Vector3 normalForce = NormalForceProjection(velocity, hit.normal);
+
+                velocity += normalForce;
+
+                Friction(normalForce);
             }
             else
             {
-                collisionCounter = 0;
-                return collisionVelocity;
+                return;
             }
-        
         }
+
+        velocity = Vector3.zero;
     }
 
-    private Vector3 Friction()
+    private void Movement(Vector3 movement)
     {
-        Vector3 friction = Vector3.zero;
-        RaycastHit hit;
-        Physics.CapsuleCast(upperCapsulePoint, lowerCapsulePoint, playerCollider.radius - Physics.defaultContactOffset, velocity.normalized, out hit, castRange, collisionMask);
-        //Physics.BoxCast(transform.position, playerCollider.size, Vector3.down, out hit, Quaternion.identity, velocity.magnitude, collisionMask);
-        Vector3 normalForce = NormalForceProjection(velocity, hit.normal);
 
+        Vector3 position = transform.position;
+
+        transform.position += movement;
+
+        for (int i = 0; i < 5; i++)
+        {
+            Collider[] colliders = Physics.OverlapCapsule(
+                upperWorldCapsulePoint,
+                lowerWorldCapsulePoint,
+                playerCollider.radius,
+                collisionMask);
+
+            if(colliders.Length == 0)
+            {
+                return;
+            }
+
+
+            Vector3? seperation = null;
+            foreach (Collider collider in colliders)
+            {
+                Vector3 direction;
+                float distance;
+
+                bool result = Physics.ComputePenetration(playerCollider,
+                    transform.position, transform.rotation,
+                    collider, collider.transform.position, collider.transform.rotation,
+                    out direction, out distance);
+
+                Assert.IsTrue(result);
+
+                if(distance < (seperation?.magnitude ?? float.MaxValue))
+                {
+                    seperation = direction * distance;
+                }
+            }
+
+            if (seperation.HasValue)
+            {
+                transform.position += seperation.Value + seperation.Value.normalized * colliderMargin;
+
+                NormalForceProjection(velocity, seperation.Value.normalized);
+            }
+        }
+        transform.position = position;
+    }
+    private void Friction(Vector3 normalForce)
+    {
         if (velocity.magnitude < normalForce.magnitude * staticFrictionCoefficient)
         {
-            friction = Vector3.zero;
+            velocity = Vector3.zero;
         }
         else
         {
-            friction -= velocity.normalized * normalForce.magnitude * kineticFrictionCoefficient;
+            velocity -= velocity.normalized * normalForce.magnitude * kineticFrictionCoefficient;
         }
-        return friction;
     }
 
-    private Vector3 NormalForceProjection(Vector3 velocityNormal, Vector3 normal)
+    private Vector3 NormalForceProjection(Vector3 force, Vector3 normal)
     {
-        if (Vector3.Dot(velocityNormal, normal) > 0)
+        if (Vector3.Dot(force, normal) > 0)
         {
             return Vector3.zero;
         }
         else
         {
-            Vector3 projection = Vector3.Dot(velocityNormal, normal) * normal;
+            Vector3 projection = Vector3.Dot(force, normal) * normal;
             return -projection;
         }
     }
