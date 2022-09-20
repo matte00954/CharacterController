@@ -5,6 +5,7 @@ public class PlayerMovement3D : MonoBehaviour
 {
     [Header("Classes")]
     [SerializeField] private CameraController controller;
+    private StateMachine stateMachine;
 
     [Header("Debug variables")]
     public Vector3 velocity;
@@ -50,6 +51,7 @@ public class PlayerMovement3D : MonoBehaviour
     private void Awake()
     {
         playerCollider = GetComponent<CapsuleCollider>();
+        stateMachine = GetComponent<StateMachine>();
     }
 
     private void Update()
@@ -58,6 +60,20 @@ public class PlayerMovement3D : MonoBehaviour
 
         grounded = Physics.CapsuleCast(upperWorldCapsulePoint, lowerWorldCapsulePoint,
             playerCollider.radius, Vector3.down, out groundHit, castRange + colliderMargin, collisionMask);
+
+        //StateMachine triggers
+        if (grounded == false)
+        {
+            stateMachine.ChangeState(new Falling(stateMachine));
+        }
+        else if(grounded && velocity.magnitude > 0)
+        {
+            stateMachine.ChangeState(new Moving(stateMachine));
+        }
+        else
+        {
+            stateMachine.ChangeState(new Idle(stateMachine));
+        }
 
         horizontal = Input.GetAxisRaw("Horizontal");
 

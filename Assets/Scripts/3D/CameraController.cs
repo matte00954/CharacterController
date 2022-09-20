@@ -4,10 +4,10 @@ public class CameraController : MonoBehaviour
 {
     [SerializeField] private Transform player;
 
-    private float mouseSensitivity = 100f;
+    [SerializeField] [Range (50f,200f)] private float mouseSensitivity = 100f;
 
     private float xRotation = 0f;
-    private float yRotation;
+    //private float yRotation; 
 
     private void Start()
     {
@@ -22,7 +22,7 @@ public class CameraController : MonoBehaviour
         xRotation -= mouseY;
         xRotation = Mathf.Clamp(xRotation, -45f, 45f);
 
-        transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+        transform.localRotation = Quaternion.Euler(xRotation * Time.deltaTime, 0f, 0f);
         player.transform.Rotate(Vector3.up * mouseX);
     }
 }
