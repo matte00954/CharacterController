@@ -3,7 +3,7 @@ using TMPro;
 
 public class StateMachine : MonoBehaviour
 {
-    private State currentState;
+    public State currentState { get; private set; }
 
     public TextMeshProUGUI textMesh;
 

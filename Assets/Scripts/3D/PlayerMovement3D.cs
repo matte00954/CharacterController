@@ -5,7 +5,7 @@ public class PlayerMovement3D : MonoBehaviour
 {
     [Header("Classes")]
     [SerializeField] private CameraController controller;
-    private StateMachine stateMachine;
+    private StateMachine stateMachine => GetComponent<StateMachine>();
 
     [Header("Debug variables")]
     public Vector3 velocity;
@@ -34,6 +34,10 @@ public class PlayerMovement3D : MonoBehaviour
     //Gravity
     [SerializeField] [Range(5f, 25f)] private float gravityForce = 15f;
 
+    private Falling falling;
+    private Moving moving;
+    private Idle idle;
+
     //Colliders
     [Header("Collision variables")]
     [SerializeField] private LayerMask collisionMask;
@@ -51,7 +55,9 @@ public class PlayerMovement3D : MonoBehaviour
     private void Awake()
     {
         playerCollider = GetComponent<CapsuleCollider>();
-        stateMachine = GetComponent<StateMachine>();
+        falling = new Falling(stateMachine);
+        moving = new Moving(stateMachine);
+        idle = new Idle(stateMachine);
     }
 
     private void Update()
@@ -64,15 +70,15 @@ public class PlayerMovement3D : MonoBehaviour
         //StateMachine triggers
         if (grounded == false)
         {
-            stateMachine.ChangeState(new Falling(stateMachine));
+            stateMachine.ChangeState(falling);
         }
         else if(grounded && velocity.magnitude > 0)
         {
-            stateMachine.ChangeState(new Moving(stateMachine));
+            stateMachine.ChangeState(moving);
         }
         else
         {
-            stateMachine.ChangeState(new Idle(stateMachine));
+            stateMachine.ChangeState(idle);
         }
 
         horizontal = Input.GetAxisRaw("Horizontal");
@@ -96,10 +102,12 @@ public class PlayerMovement3D : MonoBehaviour
 
         NormalForceProjection(velocity, groundHit.normal);
 
+        CameraController.Instance.PlayerVelocity = velocity;
+
         #region Jump
         JumpInput();
 
-        if (isJumping == true)
+        if (isJumping)
         {
             velocity += Jump();
         }
@@ -114,7 +122,7 @@ public class PlayerMovement3D : MonoBehaviour
 
     private void JumpInput() //Only checks jump input
     {
-        if (grounded && Input.GetKeyDown(KeyCode.Space) && isJumping == false) //Jump
+        if (grounded && Input.GetKeyDown(KeyCode.Space) && stateMachine.currentState != falling) //Jump
         {
             isJumping = true;
             cancelJump = false;
@@ -190,18 +198,14 @@ public class PlayerMovement3D : MonoBehaviour
 
     private void Movement(Vector3 movement)
     {
-
         Vector3 position = transform.position;
-
+     
         transform.position += movement;
-
+       
         for (int i = 0; i < 5; i++)
         {
-            Collider[] colliders = Physics.OverlapCapsule(
-                upperWorldCapsulePoint,
-                lowerWorldCapsulePoint,
-                playerCollider.radius,
-                collisionMask);
+            Collider[] colliders = Physics.OverlapCapsule(upperWorldCapsulePoint,lowerWorldCapsulePoint,
+                playerCollider.radius,collisionMask);
 
             if(colliders.Length == 0)
             {
@@ -212,15 +216,13 @@ public class PlayerMovement3D : MonoBehaviour
             Vector3? seperation = null;
             foreach (Collider collider in colliders)
             {
-                Vector3 direction;
+                Vector3 direction = Vector3.zero;
                 float distance;
 
                 bool result = Physics.ComputePenetration(playerCollider,
                     transform.position, transform.rotation,
                     collider, collider.transform.position, collider.transform.rotation,
                     out direction, out distance);
-
-                Assert.IsTrue(result);
 
                 if(distance < (seperation?.magnitude ?? float.MaxValue))
                 {
